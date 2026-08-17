@@ -1,0 +1,19 @@
+{
+  "name": "the-daily-spill",
+  "version": "2.0.0",
+  "description": "The Baddies Bookshelf's custom daily conversation bot.",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "deploy": "node deploy-commands.js",
+    "check": "node scripts/check.js"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "discord.js": "^14.27.0",
+    "dotenv": "^17.4.2",
+    "node-cron": "^4.6.0"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "settings": {
+    "channelId": "1537918193576837200",
+    "postTime": "10:00",
+    "timezone": "America/Chicago",
+    "activeDeckId": "",
+    "edition": 1,
+    "paused": true,
+    "lastScheduledDate": null,
+    "lastPostedAt": null
+  },
+  "decks": [],
+  "cards": []
+}
