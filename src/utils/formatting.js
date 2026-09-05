@@ -3,18 +3,32 @@ function formatEdition(edition) {
 }
 
 function shorten(text, maxLength = 90) {
-  if (!text || text.length <= maxLength) return text;
-  return `${text.slice(0, Math.max(0, maxLength - 3))}...`;
+  if (!text || text.length <= maxLength) {
+    return text;
+  }
+
+  return `${text.slice(
+    0,
+    Math.max(0, maxLength - 3)
+  )}...`;
 }
 
 function cleanCardText(text) {
-  let cleaned = String(text ?? '').trim().replace(/\s+/g, ' ');
-  if (!cleaned) return '';
+  let cleaned = String(text ?? '')
+    .trim()
+    .replace(/\s+/g, ' ');
 
-  cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  if (!cleaned) {
+    return '';
+  }
 
-  // Questions are the common case, but facts/quotes can keep their own punctuation.
-  if (!/[?.!]$/.test(cleaned)) cleaned += '?';
+  cleaned =
+    cleaned.charAt(0).toUpperCase() +
+    cleaned.slice(1);
+
+  if (!/[?.!]$/.test(cleaned)) {
+    cleaned += '?';
+  }
 
   return cleaned;
 }
