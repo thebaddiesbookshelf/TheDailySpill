@@ -10,6 +10,7 @@ const path = require('node:path');
 
 const {
   getActiveDeck,
+  getDeckById,
   getDecks,
   resetAllForLaunch,
   updateDeck,
@@ -29,13 +30,87 @@ const {
   thumbnailUrl,
 } = require('../services/thumbnailLibrary');
 
+// Convert internal names into pretty display names.
+// Example: october---haunted-hollow -> October — Haunted Hollow
+function prettyName(name) {
+  return String(name || '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .trim();
+}
+
+function thumbnailChoiceName(name) {
+  return prettyName(name).slice(0, 100);
+}
+
+function collectionOption(option) {
+  return option
+    .setName('collection')
+    .setDescription('Choose the collection to update.')
+    .setRequired(true)
+    .setAutocomplete(true);
+}
+
+function thumbnailOption(option) {
+  return option
+    .setName('name')
+    .setDescription('Choose a saved thumbnail.')
+    .setRequired(true)
+    .setAutocomplete(true);
+}
+
+function makeThumbnailEmbed({
+  title,
+  description,
+  deck = null,
+  name = null,
+  showImage = false,
+}) {
+  const embed = new EmbedBuilder()
+    .setColor(deck?.embedColor || '#DFA0BC')
+    .setTitle(title)
+    .setDescription(description)
+    .setFooter({
+      text: 'The Baddies Bookshelf ♡',
+    });
+
+  const files = [];
+
+  if (deck) {
+    embed.addFields({
+      name: '♡ Collection',
+      value: deck.name,
+      inline: true,
+    });
+  }
+
+  if (name) {
+    embed.addFields({
+      name: '♡ Thumbnail',
+      value: prettyName(name),
+      inline: true,
+    });
+  }
+
+  if (showImage && deck?.thumbnailName) {
+    const image = attachmentForDeck(deck);
+
+    if (image) {
+      embed.setThumbnail(thumbnailUrl(deck));
+      files.push(image);
+    }
+  }
+
+  return { embed, files };
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('spill')
-    .setDescription('Daily Spill utilities and style shortcuts.')
+    .setDescription('Daily Spill utilities and collection styling.')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
 
-    // ORIGINAL STYLE COMMANDS
+    // STYLE COMMANDS
     .addSubcommandGroup((group) =>
       group
         .setName('style')
@@ -58,11 +133,11 @@ module.exports = {
         .addSubcommand((sub) =>
           sub
             .setName('thumbnail')
-            .setDescription('Change the active collection thumbnail.')
+            .setDescription('Upload a thumbnail for the active collection.')
             .addAttachmentOption((option) =>
               option
                 .setName('image')
-                .setDescription('Square thumbnail.')
+                .setDescription('Square thumbnail image.')
                 .setRequired(true)
             )
         )
@@ -74,11 +149,11 @@ module.exports = {
         )
     )
 
-    // PERMANENT THUMBNAIL LIBRARY
+    // THUMBNAIL LIBRARY
     .addSubcommandGroup((group) =>
       group
         .setName('thumbnail')
-        .setDescription('Manage saved collection thumbnails.')
+        .setDescription('Manage your permanent thumbnail library.')
 
         .addSubcommand((sub) =>
           sub
@@ -87,7 +162,7 @@ module.exports = {
             .addStringOption((option) =>
               option
                 .setName('name')
-                .setDescription('Example: november')
+                .setDescription('Example: november haunted hollow')
                 .setRequired(true)
                 .setMinLength(1)
                 .setMaxLength(48)
@@ -95,7 +170,7 @@ module.exports = {
             .addAttachmentOption((option) =>
               option
                 .setName('image')
-                .setDescription('Upload your thumbnail image.')
+                .setDescription('Upload your thumbnail.')
                 .setRequired(true)
             )
         )
@@ -103,43 +178,29 @@ module.exports = {
         .addSubcommand((sub) =>
           sub
             .setName('list')
-            .setDescription('List your saved thumbnails.')
+            .setDescription('View your saved thumbnails.')
         )
 
         .addSubcommand((sub) =>
           sub
             .setName('select')
-            .setDescription('Assign a saved thumbnail to the active collection.')
-            .addStringOption((option) =>
-              option
-                .setName('name')
-                .setDescription('Name of the saved thumbnail.')
-                .setRequired(true)
-            )
+            .setDescription('Assign a saved thumbnail to any collection.')
+            .addStringOption(thumbnailOption)
+            .addStringOption(collectionOption)
         )
 
         .addSubcommand((sub) =>
           sub
             .setName('preview')
             .setDescription('Preview a saved thumbnail.')
-            .addStringOption((option) =>
-              option
-                .setName('name')
-                .setDescription('Name of the saved thumbnail.')
-                .setRequired(true)
-            )
+            .addStringOption(thumbnailOption)
         )
 
         .addSubcommand((sub) =>
           sub
             .setName('delete')
             .setDescription('Delete an unused saved thumbnail.')
-            .addStringOption((option) =>
-              option
-                .setName('name')
-                .setDescription('Name of the saved thumbnail.')
-                .setRequired(true)
-            )
+            .addStringOption(thumbnailOption)
             .addStringOption((option) =>
               option
                 .setName('confirm')
@@ -149,12 +210,12 @@ module.exports = {
         )
     )
 
-    // ORIGINAL RESET COMMAND
+    // PRE-LAUNCH RESET
     .addSubcommand((sub) =>
       sub
         .setName('reset-all')
         .setDescription(
-          'Reset all cards and Edition #001 for pre-launch testing only.'
+          'Reset all cards and Edition #001 for pre-launch testing.'
         )
         .addStringOption((option) =>
           option
@@ -163,6 +224,43 @@ module.exports = {
             .setRequired(true)
         )
     ),
+
+  // AUTOCOMPLETE
+  async autocomplete(interaction) {
+    const focused = interaction.options.getFocused(true);
+    const search = String(focused.value || '').toLowerCase();
+
+    if (focused.name === 'collection') {
+      const choices = getDecks()
+        .filter((deck) =>
+          deck.name.toLowerCase().includes(search)
+        )
+        .slice(0, 25)
+        .map((deck) => ({
+          name: `${deck.name}${deck.enabled ? '' : ' — Disabled'}`,
+          value: deck.id,
+        }));
+
+      return interaction.respond(choices);
+    }
+
+    if (focused.name === 'name') {
+      const choices = listThumbnails()
+        .filter((name) =>
+          prettyName(name).toLowerCase().includes(search) ||
+          name.toLowerCase().includes(search)
+        )
+        .slice(0, 25)
+        .map((name) => ({
+          name: thumbnailChoiceName(name),
+          value: name,
+        }));
+
+      return interaction.respond(choices);
+    }
+
+    return interaction.respond([]);
+  },
 
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -180,10 +278,17 @@ module.exports = {
 
         const savedName = await saveThumbnail(name, image);
 
+        const { embed } = makeThumbnailEmbed({
+          title: 'THE DAILY SPILL ♡ THUMBNAIL SAVED',
+          description:
+            'A little something pretty for the collection. ♡\n\n' +
+            'Your new thumbnail is tucked safely into the library, ' +
+            'ready whenever you need her.',
+          name: savedName,
+        });
+
         return interaction.editReply({
-          content:
-            `♡ Thumbnail \`${savedName}\` saved to the library! ` +
-            'Use `/spill thumbnail select` to assign it to your active collection.',
+          embeds: [embed],
         });
       }
 
@@ -191,21 +296,39 @@ module.exports = {
       if (sub === 'list') {
         const names = listThumbnails();
 
+        const description = names.length
+          ? names
+              .map((name) => `♡ ${prettyName(name)}`)
+              .join('\n')
+              .slice(0, 4000)
+          : 'No thumbnails saved yet, darling. ♡\n\n' +
+            'Use `/spill thumbnail save` to add your first one.';
+
+        const embed = new EmbedBuilder()
+          .setColor('#DFA0BC')
+          .setTitle('THE DAILY SPILL ♡ THUMBNAIL LIBRARY')
+          .setDescription(description)
+          .setFooter({
+            text: `${names.length} saved ♡ The Baddies Bookshelf`,
+          });
+
         return interaction.reply({
-          content: names.length
-            ? `♡ **Saved thumbnails (${names.length})**\n` +
-              names.map((name) => `• \`${name}\``).join('\n')
-            : '♡ Your thumbnail library is empty. Use `/spill thumbnail save` to add your first image.',
+          embeds: [embed],
         });
       }
 
-      // SELECT
+      // SELECT FOR ANY COLLECTION
       if (sub === 'select') {
         const name = interaction.options.getString('name', true);
-        const deck = getActiveDeck();
+        const deckId = interaction.options.getString(
+          'collection',
+          true
+        );
+
+        const deck = getDeckById(deckId);
 
         if (!deck) {
-          throw new Error('There is no active collection.');
+          throw new Error('That collection does not exist.');
         }
 
         const saved = getThumbnail(name);
@@ -217,21 +340,19 @@ module.exports = {
           thumbnailUrl: '',
         });
 
-        const file = attachmentForDeck(updated);
-
-        const embed = new EmbedBuilder()
-          .setColor(updated.embedColor)
-          .setTitle(
-            `THE DAILY SPILL ♡ ${updated.name.toUpperCase()} COLLECTION`
-          )
-          .setDescription(`♡ Saved thumbnail: \`${saved.id}\``)
-          .setThumbnail(thumbnailUrl(updated));
+        const { embed, files } = makeThumbnailEmbed({
+          title: 'THE DAILY SPILL ♡ THUMBNAIL UPDATED',
+          description:
+            'A little makeover for the collection. ♡\n\n' +
+            'She is dressed and ready for her next spill.',
+          deck: updated,
+          name: saved.id,
+          showImage: true,
+        });
 
         return interaction.editReply({
-          content:
-            `♡ \`${saved.id}\` is now the thumbnail for **${updated.name}**!`,
           embeds: [embed],
-          files: [file],
+          files,
         });
       }
 
@@ -246,8 +367,16 @@ module.exports = {
           `spill-preview${path.extname(saved.file)}`;
 
         const embed = new EmbedBuilder()
-          .setTitle(`♡ Thumbnail Preview: ${saved.id}`)
-          .setImage(`attachment://${attachmentName}`);
+          .setColor('#DFA0BC')
+          .setTitle('THE DAILY SPILL ♡ THUMBNAIL PREVIEW')
+          .setDescription(
+            `♡ **${prettyName(saved.id)}**\n\n` +
+            'Just a little sneak peek, darling.'
+          )
+          .setImage(`attachment://${attachmentName}`)
+          .setFooter({
+            text: 'The Baddies Bookshelf ♡',
+          });
 
         return interaction.editReply({
           embeds: [embed],
@@ -277,14 +406,21 @@ module.exports = {
 
         removeThumbnail(saved.id, getDecks());
 
+        const { embed } = makeThumbnailEmbed({
+          title: 'THE DAILY SPILL ♡ THUMBNAIL REMOVED',
+          description:
+            'Out with the old, in with the new. ♡\n\n' +
+            'That thumbnail has been removed from your library.',
+          name: saved.id,
+        });
+
         return interaction.reply({
-          content:
-            `♡ Thumbnail \`${saved.id}\` deleted from the library.`,
+          embeds: [embed],
         });
       }
     }
 
-    // ORIGINAL STYLE HANDLERS
+    // ORIGINAL STYLE COMMANDS
     if (group === 'style') {
       const deck = getActiveDeck();
 
@@ -308,35 +444,31 @@ module.exports = {
           embedColor: normalizeHexColor(hex),
         });
 
-        const embed = new EmbedBuilder()
-          .setColor(updated.embedColor)
-          .setTitle(
-            `THE DAILY SPILL ♡ ${updated.name.toUpperCase()} COLLECTION`
-          )
-          .setDescription('## Style preview')
-          .setFooter({
-            text: 'The Baddies Bookshelf ♡',
-          });
+        const { embed, files } = makeThumbnailEmbed({
+          title: 'THE DAILY SPILL ♡ STYLE UPDATED',
+          description:
+            'A fresh coat of color for the collection. ♡',
+          deck: updated,
+          showImage: true,
+        });
 
-        const imageUrl = thumbnailUrl(updated);
-        const thumbnail = attachmentForDeck(updated);
-
-        if (imageUrl) {
-          embed.setThumbnail(imageUrl);
-        }
+        embed.addFields({
+          name: '♡ New Color',
+          value: `\`${updated.embedColor}\``,
+          inline: true,
+        });
 
         return interaction.reply({
-          content:
-            `♡ Active collection color changed to \`${updated.embedColor}\`.`,
           embeds: [embed],
-          files: thumbnail ? [thumbnail] : [],
+          files,
         });
       }
 
-      // ORIGINAL THUMBNAIL UPLOAD
+      // UPLOAD TO ACTIVE COLLECTION
       if (sub === 'thumbnail') {
         await interaction.deferReply();
 
+        const deck = getActiveDeck();
         const image = interaction.options.getAttachment('image', true);
 
         const savedName = await saveThumbnail(
@@ -349,28 +481,43 @@ module.exports = {
           thumbnailUrl: '',
         });
 
+        const { embed, files } = makeThumbnailEmbed({
+          title: 'THE DAILY SPILL ♡ THUMBNAIL UPDATED',
+          description:
+            'New thumbnail, who dis? ♡',
+          deck: updated,
+          name: savedName,
+          showImage: true,
+        });
+
         return interaction.editReply({
-          content:
-            `♡ **${updated.name}** thumbnail updated and permanently saved as \`${savedName}\`.`,
+          embeds: [embed],
+          files,
         });
       }
 
-      // CLEAR THUMBNAIL
+      // CLEAR ACTIVE THUMBNAIL
       if (sub === 'clear-thumbnail') {
         updateDeck(deck.id, {
           thumbnailName: '',
           thumbnailUrl: '',
         });
 
+        const { embed } = makeThumbnailEmbed({
+          title: 'THE DAILY SPILL ♡ THUMBNAIL CLEARED',
+          description:
+            'A clean slate for this collection. ♡\n\n' +
+            'Your saved images are still safe in the library.',
+          deck,
+        });
+
         return interaction.reply({
-          content:
-            `♡ **${deck.name}** thumbnail removed from the collection. ` +
-            'The saved image remains in your library.',
+          embeds: [embed],
         });
       }
     }
 
-    // ORIGINAL PRE-LAUNCH RESET
+    // ORIGINAL RESET COMMAND
     if (sub === 'reset-all') {
       const confirmation = interaction.options.getString(
         'confirm',
@@ -379,7 +526,7 @@ module.exports = {
 
       if (confirmation.toUpperCase() !== 'RESET') {
         throw new Error(
-          'Reset cancelled. Type `RESET` in the confirmation field.'
+          'Reset cancelled. Type `RESET` to confirm.'
         );
       }
 
@@ -387,7 +534,8 @@ module.exports = {
 
       return interaction.reply({
         content:
-          `♡ Pre-launch reset complete: Edition #001, ${count} cards Available, scheduler paused. ` +
+          `♡ Pre-launch reset complete: Edition #001, ` +
+          `${count} cards Available, scheduler paused. ` +
           'Your decks, themes, channel, time, and timezone were kept.',
       });
     }
