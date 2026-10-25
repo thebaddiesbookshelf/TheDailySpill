@@ -281,7 +281,7 @@ module.exports = {
         const { embed } = makeThumbnailEmbed({
           title: 'THE DAILY SPILL ♡ THUMBNAIL SAVED',
           description:
-            'A little something pretty for the collection. ♡\n\n' +
+            'A little something pretty for the collection! ♡\n\n' +
             'Your new thumbnail is tucked safely into the library, ' +
             'ready whenever you need her.',
           name: savedName,
@@ -301,7 +301,7 @@ module.exports = {
               .map((name) => `♡ ${prettyName(name)}`)
               .join('\n')
               .slice(0, 4000)
-          : 'No thumbnails saved yet, darling. ♡\n\n' +
+          : 'No thumbnails saved yet! ♡\n' +
             'Use `/spill thumbnail save` to add your first one.';
 
         const embed = new EmbedBuilder()
@@ -343,8 +343,8 @@ module.exports = {
         const { embed, files } = makeThumbnailEmbed({
           title: 'THE DAILY SPILL ♡ THUMBNAIL UPDATED',
           description:
-            'A little makeover for the collection. ♡\n\n' +
-            'She is dressed and ready for her next spill.',
+            'A little makeover for the collection! ♡\n' +
+            'She is dressed and ready for her next spill!',
           deck: updated,
           name: saved.id,
           showImage: true,
@@ -371,7 +371,7 @@ module.exports = {
           .setTitle('THE DAILY SPILL ♡ THUMBNAIL PREVIEW')
           .setDescription(
             `♡ **${prettyName(saved.id)}**\n\n` +
-            'Just a little sneak peek, darling.'
+            'Just a little sneak peek!'
           )
           .setImage(`attachment://${attachmentName}`)
           .setFooter({
@@ -409,7 +409,7 @@ module.exports = {
         const { embed } = makeThumbnailEmbed({
           title: 'THE DAILY SPILL ♡ THUMBNAIL REMOVED',
           description:
-            'Out with the old, in with the new. ♡\n\n' +
+            'Out with the old, in with the new! ♡\n' +
             'That thumbnail has been removed from your library.',
           name: saved.id,
         });
@@ -506,7 +506,7 @@ module.exports = {
         const { embed } = makeThumbnailEmbed({
           title: 'THE DAILY SPILL ♡ THUMBNAIL CLEARED',
           description:
-            'A clean slate for this collection. ♡\n\n' +
+            'A clean slate for this collection. ♡\n' +
             'Your saved images are still safe in the library.',
           deck,
         });
