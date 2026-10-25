@@ -22,6 +22,12 @@ const {
   normalizeHexColor,
 } = require('../utils/validation');
 
+const {
+  save: saveThumbnail,
+  attachmentForDeck,
+  thumbnailUrl,
+} = require('../services/thumbnailLibrary');
+
 function deckOption(option, description = 'Choose a collection.') {
   return option
     .setName('collection')
@@ -213,20 +219,39 @@ module.exports = {
         throw new Error('The thumbnail must be an image file.');
       }
 
+      
+      if (thumbnail) {
+        await interaction.deferReply();
+      }
+
+      let savedName = '';
+
+      if (thumbnail) {
+        savedName = await saveThumbnail(
+          `collection-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          thumbnail
+        );
+      }
+
       const deck = createDeck({
         name: interaction.options.getString('name', true),
         description: interaction.options.getString('description') || '',
         embedColor: suppliedColor
           ? normalizeHexColor(suppliedColor)
           : '#D97706',
-        thumbnailUrl: thumbnail?.url || '',
+        thumbnailUrl: '',
+        thumbnailName: savedName,
       });
 
-      return interaction.reply({
+      const response = {
         content: `♡ **${deck.name}** created. Color: \`${deck.embedColor}\` • Thumbnail: ${
-          deck.thumbnailUrl ? 'Saved' : 'None'
+          savedName ? `Saved as \`${savedName}\`` : 'None'
         }`,
-      });
+      };
+
+      return thumbnail
+        ? interaction.editReply(response)
+        : interaction.reply(response);
     }
 
     const deckId = interaction.options.getString('collection', true);
@@ -275,17 +300,25 @@ module.exports = {
           },
           {
             name: 'Thumbnail',
-            value: deck.thumbnailUrl ? 'Saved' : 'None',
+            value: deck.thumbnailName
+              ? `Saved: \`${deck.thumbnailName}\``
+              : deck.thumbnailUrl
+                ? 'Legacy URL'
+                : 'None',
             inline: true,
           }
         );
+      
+      const imageUrl = thumbnailUrl(deck);
+      const thumbnail = attachmentForDeck(deck);
 
-      if (deck.thumbnailUrl) {
-        embed.setThumbnail(deck.thumbnailUrl);
+      if (imageUrl) {
+        embed.setThumbnail(imageUrl);
       }
 
       return interaction.reply({
         embeds: [embed],
+        files: thumbnail ? [thumbnail] : [],
       });
     }
 
@@ -320,19 +353,20 @@ module.exports = {
     if (group === 'edit' && sub === 'thumbnail') {
       const image = interaction.options.getAttachment('image', true);
 
-      if (
-        image.contentType &&
-        !image.contentType.startsWith('image/')
-      ) {
-        throw new Error('Please upload an image file.');
-      }
+      await interaction.deferReply();
 
-      updateDeck(deck.id, {
-        thumbnailUrl: image.url,
+      const savedName = await saveThumbnail(
+        `collection-${deck.id}-${Date.now()}`,
+        image
+      );
+
+      const updated = updateDeck(deck.id, {
+        thumbnailName: savedName,
+        thumbnailUrl: '',
       });
 
-      return interaction.reply({
-        content: `♡ **${deck.name}** thumbnail updated.`,
+      return interaction.editReply({
+        content: `♡ **${updated.name}** thumbnail updated and saved as \`${savedName}\`.`,
       });
     }
 

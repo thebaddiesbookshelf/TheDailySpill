@@ -102,6 +102,7 @@ function migrate(raw) {
           )
             ? deck.thumbnailUrl
             : '',
+            thumbnailName: deck.thumbnailName || '',
         createdAt:
           deck.createdAt ?? new Date().toISOString(),
       }))
@@ -287,6 +288,7 @@ function createDeck({
   description = '',
   embedColor = '#D97706',
   thumbnailUrl = '',
+  thumbnailName = '',
 }) {
   const data = readData();
   const id = normalizeDeckId(name);
@@ -317,6 +319,7 @@ function createDeck({
     enabled: true,
     embedColor,
     thumbnailUrl,
+    thumbnailName,
     createdAt: new Date().toISOString(),
   };
 

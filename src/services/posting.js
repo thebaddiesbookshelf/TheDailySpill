@@ -11,6 +11,10 @@ const {
   buildSpillEmbed,
 } = require('../utils/embeds');
 
+const {
+  attachmentForDeck,
+} = require('./thumbnailLibrary');
+
 async function resolveTargetChannel(
   client,
   channelOverride = null
@@ -66,6 +70,7 @@ function prepareNextSpill() {
   };
 }
 
+
 async function previewNextSpill() {
   const {
     settings,
@@ -73,12 +78,15 @@ async function previewNextSpill() {
     card,
   } = prepareNextSpill();
 
+  const thumbnail = attachmentForDeck(deck);
+
   return {
     embed: buildSpillEmbed({
       deck,
       card,
       edition: settings.edition,
     }),
+    files: thumbnail ? [thumbnail] : [],
     settings,
     deck,
     card,
@@ -103,6 +111,8 @@ async function postNextSpill({
 
   const edition = settings.edition;
 
+  const thumbnail = attachmentForDeck(deck);
+
   await target.send({
     embeds: [
       buildSpillEmbed({
@@ -111,6 +121,7 @@ async function postNextSpill({
         edition,
       }),
     ],
+    files: thumbnail ? [thumbnail] : [],
   });
 
   // State changes only after Discord accepts the message.
@@ -125,6 +136,8 @@ async function postNextSpill({
   });
 
   if (edition % 100 === 0) {
+    const milestoneThumbnail = attachmentForDeck(deck);
+
     await target.send({
       embeds: [
         buildMilestoneEmbed({
@@ -132,6 +145,7 @@ async function postNextSpill({
           edition,
         }),
       ],
+      files: milestoneThumbnail ? [milestoneThumbnail] : [],
     });
   }
 

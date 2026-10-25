@@ -2,6 +2,8 @@ const { EmbedBuilder } = require('discord.js');
 
 const { formatEdition } = require('./formatting');
 
+const { thumbnailUrl } = require('../services/thumbnailLibrary');
+
 function buildSpillEmbed({ deck, card, edition }) {
   if (!deck) {
     throw new Error('No active collection is set.');
@@ -21,8 +23,10 @@ function buildSpillEmbed({ deck, card, edition }) {
       text: `Edition #${formatEdition(edition)} ♡ The Baddies Bookshelf`,
     });
 
-  if (deck.thumbnailUrl) {
-    embed.setThumbnail(deck.thumbnailUrl);
+  const imageUrl = thumbnailUrl(deck);
+
+  if (imageUrl) {
+    embed.setThumbnail(imageUrl);
   }
 
   return embed;
@@ -46,8 +50,10 @@ function buildMilestoneEmbed({ deck, edition }) {
       text: 'Here’s to the next hundred ♡ The Baddies Bookshelf',
     });
 
-  if (deck?.thumbnailUrl) {
-    embed.setThumbnail(deck.thumbnailUrl);
+  const imageUrl = thumbnailUrl(deck);
+
+  if (imageUrl) {
+    embed.setThumbnail(imageUrl);
   }
 
   return embed;

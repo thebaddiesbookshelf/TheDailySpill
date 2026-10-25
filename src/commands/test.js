@@ -12,12 +12,13 @@ module.exports = {
       'Preview the next Daily Spill without consuming it.'
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  
+async execute(interaction) {
+  const { embed, files } = await previewNextSpill();
 
-  async execute(interaction) {
-    const { embed } = await previewNextSpill();
-
-    await interaction.reply({
-      embeds: [embed],
-    });
-  },
+  await interaction.reply({
+    embeds: [embed],
+    files,
+  });
+},
 };
