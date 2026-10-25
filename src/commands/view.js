@@ -1,4 +1,8 @@
+
 const {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   EmbedBuilder,
   PermissionFlagsBits,
   SlashCommandBuilder,
@@ -12,7 +16,103 @@ const {
   getDeckStats,
 } = require('../services/store');
 
+const {
+  attachmentForDeck,
+  thumbnailUrl,
+} = require('../services/thumbnailLibrary');
+
 const { shorten } = require('../utils/formatting');
+
+const PER_PAGE = 8;
+
+function buildCardsPage(deckId, requestedPage) {
+  const deck = getDeckById(deckId);
+
+  if (!deck) {
+    return null;
+  }
+
+  const cards = getCards(deck.id).sort(
+    (a, b) => a.order - b.order
+  );
+
+  if (!cards.length) {
+    return { empty: true, deck };
+  }
+
+  const totalPages = Math.ceil(cards.length / PER_PAGE);
+  const page = Math.max(
+    1,
+    Math.min(Number(requestedPage) || 1, totalPages)
+  );
+
+  const start = (page - 1) * PER_PAGE;
+
+  const description = cards
+    .slice(start, start + PER_PAGE)
+    .map(
+      (card, index) =>
+        `**${start + index + 1}.** ${card.text}\n` +
+        `*♡ ${card.posted ? 'Posted' : 'Available'}*`
+    )
+    .join('\n\n');
+
+  const embed = new EmbedBuilder()
+    .setColor(deck.embedColor || '#DFA0BC')
+    .setTitle(
+      `THE DAILY SPILL ♡ ${deck.name.toUpperCase()} CARDS`
+    )
+    .setDescription(description)
+    .setFooter({
+      text: `Page ${page} of ${totalPages} ♡ ${cards.length} cards`,
+    });
+
+  const files = [];
+  const imageUrl = thumbnailUrl(deck);
+
+  if (imageUrl) {
+    embed.setThumbnail(imageUrl);
+
+    const image = attachmentForDeck(deck);
+    if (image) files.push(image);
+  }
+
+  const buttons = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`viewcards:first:${deck.id}`)
+      .setEmoji('⏮️')
+      .setLabel('First')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page === 1),
+
+    new ButtonBuilder()
+      .setCustomId(`viewcards:prev:${deck.id}:${page}`)
+      .setEmoji('◀️')
+      .setLabel('Previous')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page === 1),
+
+    new ButtonBuilder()
+      .setCustomId(`viewcards:next:${deck.id}:${page}`)
+      .setEmoji('▶️')
+      .setLabel('Next')
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(page === totalPages),
+
+    new ButtonBuilder()
+      .setCustomId(`viewcards:last:${deck.id}`)
+      .setEmoji('⏭️')
+      .setLabel('Last')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page === totalPages)
+  );
+
+  return {
+    embeds: [embed],
+    files,
+    components: totalPages > 1 ? [buttons] : [],
+  };
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -119,9 +219,12 @@ module.exports = {
       });
 
       const embed = new EmbedBuilder()
-        .setColor('#D97706')
+        .setColor('#DFA0BC')
         .setTitle('THE DAILY SPILL ♡ COLLECTIONS')
-        .setDescription(lines.join('\n\n'));
+        .setDescription(lines.join('\n\n'))
+        .setFooter({
+          text: 'The Baddies Bookshelf ♡',
+        });
 
       return interaction.reply({
         embeds: [embed],
@@ -129,59 +232,120 @@ module.exports = {
     }
 
     if (sub === 'cards') {
-      const deck = getDeckById(
-        interaction.options.getString('collection', true)
+      const deckId = interaction.options.getString(
+        'collection',
+        true
       );
 
-      if (!deck) {
+      const page = interaction.options.getInteger('page') || 1;
+      const result = buildCardsPage(deckId, page);
+
+      if (!result) {
         throw new Error('That collection does not exist.');
       }
 
-      const cards = getCards(deck.id).sort(
-        (a, b) => a.order - b.order
-      );
-
-      if (!cards.length) {
+      if (result.empty) {
         return interaction.reply({
-          content: `**${deck.name}** does not have any cards yet.`,
+          content: `♡ **${result.deck.name}** does not have any cards yet.`,
         });
       }
 
-      const perPage = 8;
-      const totalPages = Math.ceil(cards.length / perPage);
-      const page = Math.min(
-        interaction.options.getInteger('page') || 1,
-        totalPages
-      );
+      await interaction.reply(result);
 
-      const start = (page - 1) * perPage;
+      // Collect button clicks for this particular list.
+      const message = await interaction.fetchReply();
 
-      const description = cards
-        .slice(start, start + perPage)
-        .map(
-          (card, index) =>
-            `**${start + index + 1}.** ${card.text}\n` +
-            `*${card.posted ? 'Posted' : 'Available'}*`
-        )
-        .join('\n\n');
-
-      const embed = new EmbedBuilder()
-        .setColor(deck.embedColor)
-        .setTitle(
-          `THE DAILY SPILL ♡ ${deck.name.toUpperCase()} CARDS`
-        )
-        .setDescription(description)
-        .setFooter({
-          text: `Page ${page} of ${totalPages} ♡ ${cards.length} cards`,
-        });
-
-      if (deck.thumbnailUrl) {
-        embed.setThumbnail(deck.thumbnailUrl);
-      }
-
-      return interaction.reply({
-        embeds: [embed],
+      const collector = message.createMessageComponentCollector({
+        filter: (buttonInteraction) =>
+          buttonInteraction.customId.startsWith('viewcards:'),
+        time: 15 * 60 * 1000,
       });
+
+      collector.on('collect', async (buttonInteraction) => {
+        try {
+          // Only the person who opened the list can navigate.
+          if (buttonInteraction.user.id !== interaction.user.id) {
+            return buttonInteraction.reply({
+              content:
+                '♡ This question list belongs to someone else. ' +
+                'Use `/view cards` to open your own!',
+              ephemeral: true,
+            });
+          }
+
+          const parts = buttonInteraction.customId.split(':');
+          const action = parts[1];
+          const targetDeckId = parts[2];
+          const currentPage = Number(parts[3]) || 1;
+
+          const currentCards = getCards(targetDeckId);
+          const totalPages = Math.max(
+            1,
+            Math.ceil(currentCards.length / PER_PAGE)
+          );
+
+          let nextPage = currentPage;
+
+          if (action === 'first') nextPage = 1;
+          if (action === 'prev') nextPage = currentPage - 1;
+          if (action === 'next') nextPage = currentPage + 1;
+          if (action === 'last') nextPage = totalPages;
+
+          const updated = buildCardsPage(
+            targetDeckId,
+            nextPage
+          );
+
+          if (!updated || updated.empty) {
+            return buttonInteraction.reply({
+              content:
+                '♡ This collection no longer has any cards.',
+              ephemeral: true,
+            });
+          }
+
+          await buttonInteraction.update(updated);
+        } catch (error) {
+          console.error('Daily Spill pagination error:', error);
+
+          if (!buttonInteraction.replied &&
+              !buttonInteraction.deferred) {
+            await buttonInteraction.reply({
+              content:
+                '♡ Something went wrong turning the page.',
+              ephemeral: true,
+            }).catch(() => {});
+          }
+        }
+      });
+
+      collector.on('end', async () => {
+        try {
+          const finalMessage = await interaction.fetchReply();
+
+          if (!finalMessage.components.length) return;
+
+          const disabledRows = finalMessage.components.map(
+            (row) =>
+              new ActionRowBuilder().addComponents(
+                row.components.map((button) =>
+                  ButtonBuilder.from(button).setDisabled(true)
+                )
+              )
+          );
+
+          await interaction.editReply({
+            components: disabledRows,
+          });
+        } catch (error) {
+          console.error(
+            'Could not disable expired pagination buttons:',
+            error.message
+          );
+        }
+      });
+
+      return;
     }
 
     if (sub === 'card') {
@@ -196,33 +360,46 @@ module.exports = {
       const deck = getDeckById(card.deckId);
 
       const embed = new EmbedBuilder()
-        .setColor(deck?.embedColor || '#D97706')
+        .setColor(deck?.embedColor || '#DFA0BC')
         .setTitle('THE DAILY SPILL ♡ CARD')
         .setDescription(`## ${card.text}`)
         .addFields(
           {
-            name: 'Collection',
+            name: '♡ Collection',
             value: deck?.name || 'Unknown',
             inline: true,
           },
           {
-            name: 'Status',
+            name: '♡ Status',
             value: card.posted ? 'Posted' : 'Available',
             inline: true,
           },
           {
-            name: 'Order',
+            name: '♡ Order',
             value: String(card.order),
             inline: true,
           }
-        );
+        )
+        .setFooter({
+          text: 'The Baddies Bookshelf ♡',
+        });
 
-      if (deck?.thumbnailUrl) {
-        embed.setThumbnail(deck.thumbnailUrl);
+      const files = [];
+
+      if (deck) {
+        const imageUrl = thumbnailUrl(deck);
+
+        if (imageUrl) {
+          embed.setThumbnail(imageUrl);
+
+          const image = attachmentForDeck(deck);
+          if (image) files.push(image);
+        }
       }
 
       return interaction.reply({
         embeds: [embed],
+        files,
       });
     }
   },
