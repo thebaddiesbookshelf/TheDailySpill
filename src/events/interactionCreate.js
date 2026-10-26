@@ -1,3 +1,4 @@
+
 const {
   Events,
   MessageFlags,
@@ -12,9 +13,7 @@ module.exports = {
         ? 'card'
         : null;
 
-      if (!commandName) {
-        return;
-      }
+      if (!commandName) return;
 
       const command =
         interaction.client.commands.get(commandName);
@@ -24,6 +23,38 @@ module.exports = {
       } catch (error) {
         console.error(
           `Modal error for ${interaction.customId}:`,
+          error
+        );
+
+        const payload = {
+          content:
+            error.message ||
+            'Something spilled behind the scenes.',
+          flags: MessageFlags.Ephemeral,
+        };
+
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp(payload);
+        } else {
+          await interaction.reply(payload);
+        }
+      }
+
+      return;
+    }
+
+    // BULK CARD CONFIRMATION BUTTONS
+    if (
+      interaction.isButton() &&
+      interaction.customId.startsWith('cardbulk:')
+    ) {
+      const command = interaction.client.commands.get('card');
+
+      try {
+        await command?.handleButton?.(interaction);
+      } catch (error) {
+        console.error(
+          `Bulk button error for ${interaction.customId}:`,
           error
         );
 
@@ -71,9 +102,7 @@ module.exports = {
         interaction.commandName
       );
 
-    if (!command) {
-      return;
-    }
+    if (!command) return;
 
     try {
       await command.execute(interaction);
